@@ -1,0 +1,38 @@
+---
+name: Why to observe?
+menu: Observe state
+route: '/observe-why'
+---
+
+# Why to observe?
+
+MobX is based on concept of **observables** which may feel like magical tiny boxes (_as everything unknown_), but it's fairly simple actually.
+
+If you have ever worked with [PubSub-like patterns](https://en.wikipedia.org/wiki/Publish%E2%80%93subscribe_pattern) (eg. _EventEmitter_), the observable it's fairly similar concept, but wrapped into a fancy package.
+
+✨ It will manage subscriptions automatically while you focus on declaring what data you need.
+
+⏱ It's time-proof. You will always get a latest value no matter when you start observing.
+
+<p>
+  This is very useful in the React world as you can stick to a declarative way
+  of writing components and simply work with data without additional hurdles and
+  boilerplate.
+</p>
+
+```tsx
+function LogoutWidget() {
+  const { user } = useStore()
+  return useObserver(() => (
+    <Link to="/logout">
+      <span className="name">{user.name}</span>
+    </Link>
+  ))
+}
+```
+
+With the usual React paradigms (e.g. useReducer) such a component cannot re-render itself based on a change of `user.name`. The parent component needs to cause an update to the child component, and that's not very efficient.
+
+With observer in place, the component itself can be notified about the change (as long as `user` is observable) and do a re-render without a parent ever knowing about it.
+
+Continue reading on [how to make your components reactive](/observe-how).

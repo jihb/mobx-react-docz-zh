@@ -1,0 +1,258 @@
+---
+name: React Context
+menu: Recipes
+---
+
+# React Context
+
+If you are using `inject` in your code, please refer to the [migration guide](/recipes-migration) first, or learn [why inject is considered obsolete](/recipes-inject).
+
+[React Context][context] replaces the [Legacy context][context-legacy] which was fairly awkward to use.
+
+Let's make a small, but not-so-contrived example to show what this means for MobX.
+
+### Create store
+
+Let's declare a simple store. No need to worry about observables at this point, it's just a plain object.
+
+```tsx
+export type TFriend = {
+  name: string
+  isFavorite: boolean
+  isSingle: boolean
+}
+
+export function createStore() {
+  // note the use of this which refers to observable instance of the store
+  return {
+    friends: [] as TFriend[],
+    makeFriend(name, isFavorite = false, isSingle = false) {
+      const oldFriend = this.friends.find(friend => friend.name === name)
+      if (oldFriend) {
+        oldFriend.isFavorite = isFavorite
+        oldFriend.isSingle = isSingle
+      } else {
+        this.friends.push({ name, isFavorite, isSingle })
+      }
+    },
+    get singleFriends() {
+      return this.friends.filter(friend => friend.isSingle)
+    },
+  }
+}
+
+export type TStore = ReturnType<typeof createStore>
+```
+
+> For TypeScript user it's important to note that `this` will work correctly only when `noImplicitThis` or `strict` option is enabled in `tsconfig.json`.
+
+### Setup context
+
+Nothing spectacular about it really, better to read [React docs][context] if you are unsure though.
+
+```tsx
+import React from 'react'
+import { createStore, TStore } from './createStore'
+import { useLocalStore } from 'mobx-react' // 6.x or mobx-react-lite@1.4.0
+
+const storeContext = React.createContext<TStore | null>(null)
+
+export const StoreProvider = ({ children }) => {
+  const store = useLocalStore(createStore)
+  return <storeContext.Provider value={store}>{children}</storeContext.Provider>
+}
+
+export const useStore = () => {
+  const store = React.useContext(storeContext)
+  if (!store) {
+    // this is especially useful in TypeScript so you don't need to be checking for null all the time
+    throw new Error('useStore must be used within a StoreProvider.')
+  }
+  return store
+}
+```
+
+> You could drop the whole Provider dance and set created store as a default value of the `createContext`. The reference of the store object does not need to change, so it will work in most cases. However, you might still setup a Provider for tests to battle flakiness.
+
+### Making friends
+
+Now somewhere in the tree we have a component like this.
+
+```tsx
+import React from 'react'
+import { useStore } from '../../../store'
+
+export const FriendsMaker = observer(() => {
+  const store = useStore()
+  const onSubmit = ({ name, favorite, single }) =>
+    store.makeFriend(name, favorite, single)
+
+  return (
+    <form onSubmit={onSubmit}>
+      Total friends: {store.friends.length}
+      <input type="text" id="name" />
+      <input type="checkbox" id="favorite" />
+      <input type="checkbox" id="single" />
+    </form>
+  )
+})
+```
+
+_Explicit implementation of form logic would take up too much space and is not important for the show case._
+
+### Listing friends
+
+In some other part of the app we want to show friends that are single and favorite.
+
+```tsx
+import React from 'react'
+import { useStore } from '../../../../store'
+
+export const MatchMaker = observer(() => {
+  const store = useStore()
+  // for a sake of example filtering is done here
+  // you might as well expose it on the store directly
+  const singleAndFavoriteFriends = store.singleFriends.filter(
+    friend => friend.isFavorite,
+  )
+  return <div>{singleAndFavoriteFriends.map(renderFriend)}</div>
+})
+```
+
+## Complex stores
+
+The example above is still very contrived. Usually the app state is much more robust, but it does not differ that much in its essence. You can have a single Root store and attach every other store onto it. Or have a multiple contexts, each for own segment of the app.
+
+Perhaps you want to consider [mobx-state-tree] for declaring store shape? It comes with other powerful features like snapshots and type safety out of box. Be sure to check it out.
+
+The power of React hooks allows you to create specific hooks for abstracting how is the store structured, eg. `useFriendsList` or `useOrderCart`.
+
+Such hooks are also great for mitigating long paths in a bigger folder structure as seen in the examples above.
+
+[context]: https://reactjs.org/docs/context.html
+[context-legacy]: https://reactjs.org/docs/legacy-context.html
+[mobx-state-tree]: https://github.com/mobxjs/mobx-state-tree
+## Multiple global stores
+
+In your application, you might need to have multiple global stores in order to better separate your different concerns.
+Example stores could be, `CurrentUserStore`, `ShoppingCartStore`, `UserThemeStore`, etc. With the use of React Context and Hooks,
+we can make this pretty simple and scalable.
+
+In this section, we'll make a custom hook called `useStores` that we can use to destructure the store or stores that we need within our given application components.
+
+Our example application will have two stores, `CounterStore` and `ThemeStore`.
+
+```tsx
+// src/stores/counter-store.tsx
+import { observable, action, computed } from 'mobx'
+
+export class CounterStore {
+  @observable
+  count = 0
+
+  @action
+  increment() {
+    this.count++
+  }
+
+  @action
+  decrement() {
+    this.count--
+  }
+
+  @computed
+  get doubleCount() {
+    return this.count * 2
+  }
+}
+```
+
+```tsx
+// src/stores/theme-store.tsx
+import { observable, action } from 'mobx'
+
+export class ThemeStore {
+  @observable
+  theme = 'light'
+
+  @action
+  setTheme(newTheme: string) {
+    this.theme = newTheme
+  }
+}
+```
+
+It's important to note that we are only exporting the store classes themselves here, and not instances of them. It is considered a bad practice to keep stores globally as it will cause issues when managing unit and integrations tests in a non-trivial application.
+
+Next we want to make a `storesContext` that will contain each of our stores.
+
+```tsx
+// src/contexts/index.tsx
+import React from 'react'
+import { CounterStore, ThemeStore } from '../stores'
+
+export const storesContext = React.createContext({
+  counterStore: new CounterStore(),
+  themeStore: new ThemeStore(),
+})
+```
+
+Here we are simply instantiating the classes directly, but another viable pattern is to create factory functions for each store, like `createCounterStore()` which hides the fact the store is a class and makes it easier to implement `React.useState(createCounterStore)` if such a need arises. Either approach allows for overriding your stores within tests.
+
+In a complex app where stores might share dependencies, you might have to defer the instantiation of a store after some initialization is complete, in this case, the `Provider` is necessary.
+
+Finally, let's make our custom `useStores` hook to access the exported `storesContext` value.
+
+```tsx
+// src/hooks/use-stores.tsx
+import React from 'react'
+import { storesContext } from '../contexts'
+
+export const useStores = () => React.useContext(storesContext)
+```
+
+Now we're ready to start consuming and using our stores.
+
+```tsx
+import React from 'react'
+import { observer } from 'mobx-react'
+import { useStores } from '../hooks/use-stores'
+
+// src/components/Counter.tsx
+export const Counter = observer(() => {
+  const { counterStore } = useStores()
+
+  return (
+    <>
+      <div>{counterStore.count}</div>
+      <button onClick={() => counterStore.increment()}>++</button>
+      <button onClick={() => counterStore.decrement()}>--</button>
+    </>
+  )
+})
+
+// src/components/ThemeToggler.tsx
+export const ThemeToggler = observer(() => {
+  const { themeStore } = useStores()
+
+  return (
+    <>
+      <div>{themeStore.theme}</div>
+      <button onClick={() => themeStore.setTheme('light')}>
+        set theme: light
+      </button>
+      <button onClick={() => themeStore.setTheme('dark')}>
+        set theme: dark
+      </button>
+    </>
+  )
+})
+
+// src/App.tsx
+const App = () => (
+  <main>
+    <Counter />
+    <ThemeToggler />
+  </main>
+)
+```

@@ -1,0 +1,68 @@
+---
+name: Introduction
+route: /
+---
+
+import { Playground } from 'docz'
+import { TodoList } from './examples/TodoList'
+
+# Introduction
+
+[MobX](https://mobx.js.org/) in [React](https://reactjs.org) brings easy reactivity to your components. It can handle whole application state as well.
+
+> This site shows examples with React functional components and [Hooks](https://reactjs.org/docs/hooks-intro.html). Class components work in a similar way. In case there is class-specific behavior, we will mention it and supply an appropriate example.
+
+Check out the example of the amazing Todo application or continue reading on [why to observe](/observe-why) or [how to manage state](/state-how).
+
+Do you want to migrate toward Hooks? Have a look at [our migration guide](/recipes-migration).
+
+<Playground>
+  <TodoList
+    initialTodos={['Introduce MobX in React', 'Make a great app with MobX']}
+  />
+</Playground>
+
+```tsx
+import React from 'react'
+import { observer, useLocalStore } from 'mobx-react' // 6.x or mobx-react-lite@1.4.0
+
+export const TodoList = observer<{ initialTodos: string[] }>(
+  ({ initialTodos }) => {
+    const todoRef = React.useRef()
+    const store = useLocalStore(() => ({
+      todos: createTodos(initialTodos) as Record<string, boolean>,
+      get pendingTodos() {
+        return Object.keys(store.todos).filter(
+          todo => store.todos[todo] === false,
+        )
+      },
+      get doneTodos() {
+        return Object.keys(store.todos).filter(
+          todo => store.todos[todo] === true,
+        )
+      },
+      addTodo: () => {
+        store.todos[todoRef.current.value] = false
+        todoRef.current.value = ''
+      },
+      toggleTodo: (todo: string) => {
+        store.todos[todo] = !store.todos[todo]
+      },
+    }))
+
+    const renderTodo = (done: boolean) => todo => (
+      <Todo key={todo} done={done} text={todo} onToggle={store.toggleTodo} />
+    )
+
+    return (
+      <form onSubmit={store.addTodo}>
+        {store.pendingTodos.map(renderTodo(false))}
+        {store.doneTodos.map(renderTodo(true))}
+        <br />
+        <input ref={todoRef} />
+        <button>Add todo</button>
+      </form>
+    )
+  },
+)
+```

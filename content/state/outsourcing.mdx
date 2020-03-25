@@ -1,0 +1,45 @@
+---
+name: State outsourcing
+menu: Manage state
+---
+
+# State outsourcing
+
+**_since mobx-react-lite@1.3.0_**
+
+In some case you might want to use power of MobX over the set of variables while keeping logic
+
+```
+useAsObservableSource<T>(state: T): T
+```
+
+The `useAsObservableSource` hook can be used to turn any set of values into an observable object that has a stable reference (the same object is returned every time from the hook).
+
+The goal of this hook is to trap React primitives such as props or state into a local, observable object so that the [store initializer](/state-local) or [effects](/recipes-effects) can safely refer to it, and get notified if any of the values change. Additionally, you can wrap a set of values into observable object and pass it to other components.
+
+The value passed to `useAsObservableSource` should always be an object. Only shallow properties are converted. For a deep conversion use `mobx.observable` along with `React.useState`.
+
+The object returned by `useAsObservableSource`, although observable, should be considered read-only for all practical purposes.
+
+> Tip: for optimal performance it is recommend to not use `useAsObservableSource` together on the same component as useObserver (or observer), as it might trigger double renderings. Instead, use [Observer component](/observer-component).
+
+```tsx
+import { useAsObservableSource } from 'mobx-react' // 6.x or mobx-react-lite@1.3.0
+
+const PersonSource = ({ name, age }) => {
+  const person = useAsObservableSource({ name, age })
+  return <PersonBanner person={person} />
+}
+```
+
+## Why to go around like that?
+
+Right. It has probably occured to you why not to do calculation directly in rendering?
+
+It will definitely work well for such contrived example. However, consider that your calculation could be much more complicated and it's good to keep things together.
+
+You might also want to pass that store further down the tree. Do you really want to repeat the calculation in every spot? It's highly unlikely.
+
+## Don't destructure
+
+There is a whole [page dedicated to destructuring problem](/state-destruct), but as it's common source of errors, let's repeat in here. Don't ever do `const { multiplier } = useAsObservableSource(props)`. Such value would not be observable anymore.

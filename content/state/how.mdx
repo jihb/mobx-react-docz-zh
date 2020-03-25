@@ -1,0 +1,67 @@
+---
+name: How to manage state?
+menu: Manage state
+route: '/state-how'
+---
+
+# How to manage state?
+
+State management in React is a very broad topic and new patterns are introduced often. MobX simplifies some things, but there's still several approaches to use (#ILikeOptions).
+
+## Creating a state
+
+State in MobX is represented by any [observable object][observable]. You can use any of the mentioned approaches in the linked document.
+
+For advanced and more robust state, the better choice might be [mobx-state-tree].
+
+Lastly we have shiny new Hooks to help on this journey like [useLocalStore] _(not available in class components)_.
+
+```tsx
+import { observable } from 'mobx'
+import { useLocalStore } from 'mobx-react' // 6.x or mobx-react-lite@1.4.0
+
+function CreatingState() {
+  const simpleState = React.useRef(observable.array([1, 2, 3])).current
+  const [bigState] = React.useState(createExpensiveStore)
+  const localState = useLocalStore(() => ({
+    count: 0,
+    inc() {
+      localState.count += 1
+    },
+  }))
+  return <Rendering simple={simpleState} big={bigState} local={localState} />
+}
+
+class CreatingState extends React.PureComponent {
+  // or use constructor if class properties are not available for you
+  simpleState = observable.array([1, 2, 3])
+  render() {
+    // class component does not support any other way of
+    // keeping observable state within a component
+    return <Rendering simple={this.simpleState} />
+  }
+}
+```
+
+> Fair warning. Don't ever use `React.useMemo` to keep reference to the state object. It may be randomly thrown away by React and you may lose data.
+
+## Accessing a state
+
+The second important aspect of state management is how to pass created observables around the component tree. There is no MobX related logic, but it's certainly worth mentioning here.
+
+In simple scenarios, you can create an observable locally within a component and then pass it manually through props (as shown above). It's pretty much the same approach you would use with, e.g., [useReducer] except you will be passing a single object around only.
+
+For a more robust state management, it's recommended [to use React Context][context] over the legacy [inject].
+
+### Global variable state?
+
+It's possible to keep application state in global variables that would get imported in component files. It will work in most cases.
+
+However, if you are writing tests (you should), global variables are a problem and can cause flakiness. In short, we don't recommended keeping state in global variable.
+
+[usereducer]: https://reactjs.org/docs/hooks-reference.html#usereducer
+[observable]: https://mobx.js.org/refguide/observable.html
+[mobx-state-tree]: https://github.com/mobxjs/mobx-state-tree
+[uselocalstore]: /state-local
+[context]: /recipes-context
+[inject]: /recipes-inject

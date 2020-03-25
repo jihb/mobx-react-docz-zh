@@ -1,0 +1,149 @@
+---
+name: Migration guide
+menu: Recipes
+---
+
+# Migration guide
+
+First and foremost: if you are happy with the current Provider/inject pattern, there is nothing you need to change in your application. This guide is intended as the path to the future of React and tools that might provide you with more comfort.
+
+> Gradual migration is absolutely possible. Don't rewrite your whole app at once.
+
+Since the introduction of [React Context](/recipes-context), the inject pattern [is considered obsolete](/recipes-inject) and it's highly recommended to migrate away over the time. Don't worry, it won't disappear from the library anytime soon.
+
+## **Prerequisite**: Upgrade to mobx-react 6.x
+
+The library has been internally rewritten to use new Context. You will need React 16.8 to upgrade to this version.
+
+### What about mobx-react 5.x?
+
+If you are forced to stick to the older version (most likely because of using an older React version), there isn't really anything you can do right now and just keep using inject as you are used to.
+
+## Hooks to the rescue
+
+React Hooks are most likely the easiest way to consume MobX store. They give you a freedom in how to do things instead of heavily opinionated `inject`. Consider the following example.
+
+```tsx
+import { observer } from 'mobx-react'
+const UserOrderInfo = observer(() => {
+  const { user, order } = useStores()
+  return (
+    <div>
+      {user.name} has order {order.id}
+    </div>
+  )
+})
+```
+
+But... but... **mixing state with a component UI is bad practice**, right? Well, nobody is forcing you to do that. If accessing context in a UI component bothers you, just pass it through the props from a parent component. Or make your own HOC or render prop component if you must.
+
+Ok, that's cool, but let's take a step back here. How exactly to move from `inject` to this new solution, you might ask? It's easy.
+
+The `mobx-react@6` exposes a Context object as `MobXProviderContext` for the purposes of gradual migration. You can make a simple hook like this.
+
+```tsx
+import { MobXProviderContext } from 'mobx-react'
+function useStores() {
+  return React.useContext(MobXProviderContext)
+}
+```
+
+That's all the basics you need to understand. You can simply use such a hook for any function components you have refactored to hooks.
+
+You can build on top of that and make a solution that fits your needs. For example, have a hook for each separate store: e.g., `useUserStore` or `useOrderStore`. It's similar to passing string to `inject`, but much safer.
+
+### Why the hook is not exported from the package?
+
+
+Think of it more like a tool for migration. The concept of Context is so simple that there is no added value of having it inside the library. If you ever manage to migrate a whole app to hooks, you can drop the Provider from `mobx-react` and use your own to gain even more control. Besides, it's inherently easier to correctly declare types for own context (e.g., with TypeScript).
+
+### What about mapper function?
+
+With the original `inject` you were able to do something like the following.
+
+```tsx
+@inject(stores => ({
+  username: stores.user.name,
+  orderId: stores.order.id,
+}))
+@observer
+class UserOrderInfo extends React.Component {
+  render() {
+    return (
+      <div>
+        {this.props.username} has order {this.props.orderId}
+      </div>
+    )
+  }
+}
+```
+
+It's important to realize here, that with hooks, such a mapping utility is probably redundant. You can do this directly within the component as shown in the first example on this page.
+
+Alternatively, you can make a custom hook that takes care of mapping only. It may prove useful for reusability purposes or simply a separation of concerns.
+
+```tsx
+function useUserData() {
+  const { user, order } = useStores()
+  return {
+    username: user.name,
+    orderId: order.id,
+  }
+}
+
+const UserOrderInfo = observer(() => {
+  // Do not destructure data!
+  const data = useUserData()
+  return (
+    <div>
+      {data.username} has order {data.orderId}
+    </div>
+  )
+})
+```
+
+However, be warned. If you would attempt to destructure `data`, you will lose the reactivity. This is a general problem with MobX and many get burned by it. An alternative and safer approach might look like following.
+
+```tsx
+// use mobx-react@6.1.2 or `mobx-react-lite`
+import { useObserver } from 'mobx-react'
+function useUserData() {
+  const { user, order } = useStores()
+  return useObserver(() => ({
+    username: user.name,
+    orderId: order.id,
+  }))
+}
+
+const UserOrderInfo = () => {
+  // this works now just fine
+  const { username, orderId } = useUserData()
+  return (
+    <div>
+      {username} has order {orderId}
+    </div>
+  )
+}
+```
+
+In this case, you can omit the wrapping `observer`, but you need to be sure there is no other observable present in the component.
+
+## Make your own inject
+
+If you are for some reason convinced that `inject` is a superb pattern and you don't want to lose it, just make your own. A basic one might look as easy as this.
+
+```tsx
+import { MobXProviderContext } from 'mobx-react'
+function inject(selector, baseComponent) {
+  const component = ownProps => {
+    const store = React.useContext(MobXProviderContext)
+    return useObserver(() => baseComponent(selector({ store, ownProps })))
+  }
+  component.displayName = baseComponent.name
+  return component
+}
+```
+
+Note this implementation has `useObserver` inside which means that you won't need to wrap your component into `observer` too. These are the perks of being able to do it your way.
+
+We highly recommend you use a different name than `inject`, especially if you're gradually migrating and still using original `inject` as well.
